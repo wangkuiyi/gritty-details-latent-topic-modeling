@@ -1,0 +1,32 @@
+
+In 2003, Blei, Ng and Jordan \cite{lda_vem} presented the Latent
+Dirichlet Allocation (LDA) model and a Variational
+Expectation-Maximization algorithm for training the model.  In 2004,
+Griffiths and Steyvers \cite{lda_gibbs} derived a Gibbs sampling
+algorithm for learning LDA.  Since then, Gibbs sampling was shown more
+efficient than other LDA training algorithms including variational EM
+and Expectation-Propagation \cite{ep-lda}.  This efficiency is due to
+a instrisic property of LDA -- the conjugacy between the Dirichlet
+prior the multinomial likelihood.  For this reason, Gibbs sampling
+algorithms were derived for inference in many models that extends LDA
+\cite{tot} \cite{rart} \cite{hlda} \cite{slda} \cite{pam}.
+
+To further improve the efficiency of the Gibbs sampling algorithm for
+LDA, researchers tried to distribute the computation on multiple
+computers \cite{dist-lda-gibbs} or to optimize the Gibbs sampling
+speed on each computer \cite{fastlda}.
+
+Since November 2007, I started to work on developing distributed
+computing solutions of topic models.  Industrial solutions are often
+required to train models using massive data sets, so I need to express
+training algorithms using modern distributed computing models, in
+particular, MapReduce, BSP and MPI.
+
+This document is my learning and working note.  If you are interested
+with large scale computing of latent topic models, I hope this
+document could be helpful in the first stage of your work.
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "llt"
+%%% End: 

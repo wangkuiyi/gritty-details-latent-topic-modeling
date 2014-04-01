@@ -1,0 +1,77 @@
+\usepackage{anysize}
+\marginsize{3cm}{3cm}{1cm}{1cm}
+
+\usepackage[hypertexnames=false]{hyperref}
+\hypersetup{
+    bookmarks=true,         % show bookmarks bar?
+    unicode=false,          % non-Latin characters in Acrobat¡¯s bookmarks
+    pdftoolbar=true,        % show Acrobat¡¯s toolbar?
+    pdfmenubar=true,        % show Acrobat¡¯s menu?
+    pdffitwindow=false,     % page fit to window when opened
+    pdfnewwindow=true,      % links in new window
+    pdftitle={Latent Topic Models: The Gritty Details},
+    pdfauthor={Yi Wang},     % author
+    colorlinks=true,         % false: boxed links; true: colored links
+    linkcolor=red,           % color of internal links
+    citecolor=green,         % color of links to bibliography
+    filecolor=magenta,       % color of file links
+    urlcolor=blue            % color of external links
+}
+
+\usepackage{graphicx}
+\usepackage{subfig}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{url}
+\usepackage{color}
+\usepackage{algorithm2e}
+
+\graphicspath{{./figures/}}
+
+% General math symbols
+
+\newcommand{\B}[0]{\operatorname{B}} % the Beta function
+\newcommand{\LL}[0]{\mathcal{L}} % Log-likelihood
+\newcommand{\SSet}[1]{\mathbb{#1}} % Super-set
+\newcommand{\Set}[1]{\mathcal{#1}} % Set
+\newcommand{\M}[1]{\boldsymbol{#1}} % Matrix
+\newcommand{\V}[1]{\boldsymbol{#1}} % Vector
+\newcommand{\E}{\operatorname{E}}   % Expectation
+\newcommand{\I}[0]{\operatorname{I}} % Mutual information
+\newcommand{\code}[1]{\texttt{#1}}   % Source Code
+\newcommand\argmax{\operatornamewithlimits{argmax}}
+\newcommand\argmin{\operatornamewithlimits{argmin}}
+\newcommand{\ud}{\mathrm{d}}    % Differentiation parameter
+\newcommand{\N}[0]{\mathcal{N}} % Gaussian distribution
+\newcommand{\Dir}{\operatorname{Dir}} % Dirichlet distribution
+\newcommand{\Mult}{\operatorname{Mult}} % Multinomial distribution
+
+% LDA specific symbols
+
+\newcommand{\vtopicprior}{\V{\alpha}}
+\newcommand{\vwordprior}{\V{\beta}}
+
+\newcommand{\topicprior}[1]{\alpha_{#1}}
+\newcommand{\wordprior}[1]{\beta_{#1}}
+
+\newcommand{\Ndz}[1]{\Omega_{#1}}
+\newcommand{\Nzw}[1]{\Psi_{#1}}
+
+\newcommand{\Ndze}[1]{\Omega_{#1}^{\neg i}}
+\newcommand{\Nzwe}[1]{\Psi_{#1}^{\neg i}}
+
+\newcommand{\PZD}[0]{\M{\Theta}}
+\newcommand{\Pzd}[1]{\V{\theta}_{#1}}
+\newcommand{\pzd}[1]{\theta_{#1}}
+
+\newcommand{\PWZ}[0]{\M{\Phi}}
+\newcommand{\Pwz}[1]{\V{\phi}_{#1}}
+\newcommand{\pwz}[1]{\phi_{#1}}
+
+\newcommand{\Ze}[0]{Z^{\neg i}}
+\newcommand{\We}[0]{W^{\neg i}}
+
+% Editing commands
+
+\newcommand{\nt}[1]{\textcolor{red}{\textbf{#1}}}

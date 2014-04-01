@@ -1,0 +1,475 @@
+
+\section{Introduction}
+
+In 2007, David Blei and Jon MacAuliffe presented Supervised LDA
+(sLDA)\cite{slda}, an extension to LDA\cite{lda_vem}.  In that paper,
+a variational EM algorithm was presented for approximate inference of
+sLDA.  This paper presents a Gibbs sampling algorithm for accurate
+inference of the model and explains that the learning of sLDA can be
+well approximated by a two-step procedure: (1) learning an LDA from
+the training data with document rates ignored, and (2) learning a
+linear regression that project topic distributions of documents to the
+document rates.  The approximate error depends on the average length
+of training documents.  In most real applications where documents are
+not as short as a dozen of words, the error is small and the
+approximation works well.
+
+This approximation is valuable for large-scale learning problems,
+because each iteration of the learning algorithm of sLDA scans the
+training data three passes, whereas the learning algorithm of LDA
+scans the data one pass.  Also, performance optimization and
+distributed computing of LDA and linear regression have been
+intensively studied; some highly efficient methods were
+proposed~\cite{dist-lda-gibbs} \cite{async-dist-lda-gibbs}
+\cite{fastlda}.  In the last section, we will show the application of
+this approximation in real world Web applications.
+
+
+\begin{table}[!h]
+  \centering
+  \begin{tabular}{ll}
+    $V$ & the size of vocabulary \\
+    $K$ & the number of topics \\
+    $D$ & the number of documents in the training corpus \\
+    $N_d$ & the number of words in document $d$ \\
+    $w_{d,n}$ & the $n$-th word in document $d$ \\
+    $W$ & $W=\{w_{d,n}\}$, all words in the training corpus \\
+    $z_{d,n}$ & the topic of the $n$-th word in document $d$ \\
+    $Z$ & $Z=\{z_{d,n}\}$, all topic assignments for the corpus \\
+    $\omega_{d,k}$ & the number words assigned topic $k$ in document $d$ \\
+    $\Omega$ & $\Omega=\{\omega_{d,k}\}$, a $D\times{}K$ matrix \\
+    $\theta_d$ & the topic distribution of document $d$ \\
+    $\Theta$ & $\Theta=\{\theta_d\}_{d=1}^D$ \\
+    $\alpha$ & the Dirichlet parameter vector that generates $\Theta$ \\
+    $y_d$ & the rate of document $d$ \\
+    $Y$ & $Y=\{y_d\}$, rate of all documents \\
+    $\psi_{k,v}$ & the number of times that word $v$ is assigned topic $k$ \\
+    $\Psi$ & $\Psi=\{\psi_{k,v}\}$, a $K\times{}V$ matrix \\
+    $\phi_k$ & $\phi_k=\{\phi_{k,v}=p(w=v|z=k)\}$, the word distribution of topic $k$ \\
+    $\Phi$ & $\Phi=\{\phi_k\}_{k=1}^K$ \\
+    $\beta$ & the Dirichlet parameter vector that generates $\Phi$ \\
+    $R=\{\eta, \mu, \sigma^2\}$ & transformer, basis and covariance of the
+    rate model \\
+  \end{tabular}
+  \caption{Notations used in this paper.}
+  \label{tab:notations}
+\end{table}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[scale=0.8]{slda}
+  \caption{The Bayesian network of sLDA.  If we remove $R$ and $y_d$,
+    this figure becomes the Bayesian network of LDA.}
+  \label{fig:slda}
+\end{figure}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[scale=0.8]{slda-set}
+  \caption{An equivalent Bayesian network of sLDA using set notations.}
+  \label{fig:slda-set}
+\end{figure}
+
+\section{Gibbs Sampling of Supervised LDA}
+
+In sLDA, The rate model, $R$, cannot be integrated out like the
+language model, $\Phi$.  This makes it difficult to derive a Gibbs
+sampling algorithm to sample the latent topics, $Z$.  Inspired by
+\cite{tot}, we derive an approximate Gibbs sampling algorithm, where
+after each iteration, it updates the rate model by maximizing
+likelihood.
+
+This algorithm alternatively executes two steps: (i) given model
+parameters, $\Phi$ and $R$, estimate the values of hidden variables,
+$Z$; and (ii) given $Z$, update the model parameters.
+
+\paragraph{Estimate Hidden Variables:} Gibbs sampling is used in
+(i) to estimate the value of each $z_{d,n}\in{}Z$ by sampling from the
+full conditional distribution of $z_{d,n}$:
+\begin{equation}
+  \label{eq:slda-full-conditional}
+  p(z_{d,n}|Z_{-(d,n)},W,Y,\alpha,\beta,R)
+  =
+  \frac{
+    p(z_{d,n},Z_{-(d,n)},W,Y|\alpha,\beta,R)
+  }{
+    p(Z_{-(d,n)},W,Y|\alpha,\beta,R)
+  }
+  \enspace.
+\end{equation}
+Here $Z_{-(d,n)}$ denotes a subset of $Z$ with $z_{d,n}$ excluded, or
+in the notation of set theory, $Z\backslash\{z_{d,n}\}$.  Because
+$w_{d,n}$ is generated from $z_{d,n}$, when $z_{d,n}$ is excluded from
+$Z$, $w_{d,n}$ can be excluded from $W$.  So
+(\ref{eq:slda-full-conditional}) is equivalent to
+\begin{equation}
+  \label{eq:slda-full-conditional-1}
+  p(z_{d,n}|Z_{-(d,n)},W,Y,\alpha,\beta,R)
+  =
+  \frac{
+    p(Z,W,Y|\alpha,\beta,R)
+  }{
+    p(Z_{-(d,n)},W_{-(d,n)},Y|\alpha,\beta,R)
+  }
+  \enspace.
+\end{equation}
+
+Refer to Figure~\ref{fig:slda-set}, we can write the numerator at the
+right side of (\ref{eq:slda-full-conditional-1}) as
+\begin{equation}
+  \label{eq:slda-joint-distribution}
+  p(Z,W,Y|\alpha,\beta,R) =
+  p(Z|\alpha) \; p(W|Z,\beta) \; p(Y|Z,R)
+  \enspace.
+\end{equation}
+
+The conjugacy between Dirichlet prior and multinomial likelihood makes
+it convenient to compute $p(Z|\alpha)$ and $p(W|Z,\beta)$, similar
+with what we did for LDA~\cite{heinrich}:
+\begin{equation}
+  \label{eq:gen-Z}
+  p(Z|\alpha)
+  =
+  \int p(Z|\Theta,\alpha) \; p(\Theta|\alpha) \; \ud\Theta
+  =
+  \prod_{d=1}^D
+  \frac{\B(\Omega_d+\alpha)}{\B(\alpha)}
+\end{equation}
+\begin{equation}
+  \label{eq:gen-W}
+  p(W|Z,\beta)
+  =
+  \int P(W|\Phi,Z,\beta) \; p(\Phi|Z,\beta) \; \ud\Phi
+  =
+  \prod_{k=1}^K
+  \frac{\B(\Psi_k+\beta)}{\B(\beta)}
+\end{equation}
+where $\Omega_d$ is the $d$-th row of a $D\times{}K$ matrix, $\Omega$,
+where $\Omega_{d,k}$ is the number of words assigned topic $k$ in
+document $d$; $\Psi_k$ is the $k$-th row of a $K\times{}V$ matrix,
+$\Psi$, where $\Psi_{k,w}$ is the number of times that word $w$ is
+assigned topic $k$ in the training corpus; $B(\cdot)$ is the gamma
+function.
+
+The last term of (\ref{eq:slda-joint-distribution}) is
+\begin{equation}
+  \label{eq:gen-rate}
+  p(Y|Z,R) =
+  \prod_{d=1}^D p(y_d|Z_d,R) =
+  \prod_{d=1}^D \N(y_d; \; \eta \cdot \hat{\theta}_d + \mu, \sigma^2)
+\end{equation}
+where $\hat{\theta}_d$ is the empirical topic distribution of document
+$d$, which can be computed by unifying $\Omega_d$.
+
+The denominator at the right side of
+(\ref{eq:slda-full-conditional-1}) has similar form of the numerator:
+\begin{equation}
+  \label{eq:slda-sub-joint-distribution}
+  \begin{split}
+    p(&Z_{-(d,n)},W_{-(d,n)},Y|\alpha,\beta,R) = \\
+    &p(Z_{-(d,n)}|\alpha) \; p(W_{-(d,n)}|Z_{-(d,n)},\beta) \; p(Y|Z_{-(d,n)},R)
+  \end{split}
+\end{equation}
+where
+\begin{equation}
+  \label{eq:gen-sub}
+  \begin{split}
+  p(Z_{-(d,n)}|\alpha)
+  &=
+  \prod_{d=1}^D
+  \frac{\B(\Omega_{d,-n}+\alpha)}{\B(\alpha)}
+  \\
+  p(W_{-(d,n)}|Z_{-(d,n)},\beta)
+  &=
+  \prod_{k=1}^K
+  \frac{\B(\Psi_{k,-n}+\beta)}{\B(\beta)}
+  \\
+  p(Y|Z_{-(d,n)},R)
+  &=
+  \prod_{d=1}^D \N(y_d; \; \eta \cdot \hat{\theta}_{d,-n} + \mu, \sigma^2)
+  \end{split}
+\end{equation}
+where $\Omega_{d,-n}$ is $\Omega_d$ with the topic assigned to the
+$n$-th word excluded; $\Psi_{d,-n}$ is $\Psi_d$ with the topic
+assigned to the $n$-th word excluded; $\theta_{d,-n}$ is the
+unification of $\Omega_{d,-n}$\footnote{Note that a document must
+  contains at least two words, otherwise $\hat{\theta}_{d,-n}$
+  degenerates to a zero-vector.  However, this requirement is not
+  specific to sLDA, it should also be hold for LDA, because the basic
+  idea of LDA is to cluster frequently co-occurred words into a topic;
+  empty documents and documents containing one word do not contribute
+  to this goal.}.
+
+Given (\ref{eq:slda-joint-distribution})$\sim$(\ref{eq:gen-sub}), the
+full conditional distribution can be written as
+\begin{equation}
+  \label{eq:slda-full-conditional-1}
+  \begin{split}
+  p(& z_{d,n} \mid Z_{-(d,n)},W,Y,\alpha,\beta,R)
+  \\
+  =&
+  \frac{
+    p(Z,W,Y|\alpha,\beta,R)
+  }{
+    p(Z_{-(d,n)},W_{-(d,n)},Y|\alpha,\beta,R)
+  }
+  \\
+  =&
+  \left[ \frac{p(Z|\alpha)}{p(Z_{-(d,n)}|\alpha)} \right] \cdot
+  \left[ \frac{p(W|Z,\beta)}{p(W_{-(d,n)}|Z_{-(d,n)},\beta)} \right] \cdot
+  \left[ \frac{p(Y|Z,R)}{p(Y|Z_{-(d,n)},R)} \right]
+  \\
+  =&
+  \left[ \frac{
+    \Omega_{d,z_{d,n}} + \alpha_{z_{d,n}} - 1
+  }{
+    \left( \sum_{k=1}^K  \Omega_{d,k} + \alpha_k \right) - 1
+  } \right]
+  \cdot
+  \left[ \frac{
+    \Psi_{z_{d,n},w_{d,n}} + \beta_{w_{d,n}} - 1
+  }{
+    \left( \sum_{v=1}^V  \Psi_{v,z_{d,n}} + \beta_w \right) - 1
+  } \right]
+  \cdot
+  \\
+  &
+  \left[ \frac{
+    \N(y_d; \; \eta \cdot \hat{\theta}_d + \mu, \sigma^2)
+  }{
+    \N(y_d; \; \eta \cdot \hat{\theta}_{d,-n} + \mu, \sigma^2)
+  } \right]
+  \enspace.
+  \end{split}
+\end{equation}
+
+\paragraph{Parameter Estimation:}
+The model parameters includes two part: (i) the language model
+$\Phi=p(v|k)$ for $1\leq{}v\leq{}V$ and $1\leq{}k\leq{}K$, and (ii)
+the rate model $R=\{\eta,\mu,\sigma^2\}$.
+
+In the Gibbs sampling step, we need to update the two count matrices,
+$\Omega$ and $\Psi$.  One of them, $\Psi$, is a representation of
+$\Phi$.  According to the physical meaning of parameters of the
+Dirichlet-multinomial distribution \cite{prml}, we can unifying the
+$\Psi_k$, the $k$-th row of $\Psi$, using $\beta$ as the Dirichlet
+smoothing factor to estimate the word distribution of topic $k$:
+\begin{equation}
+  \label{eq:read-out-final}
+  \phi_{k,v}
+  =
+  \frac{
+    \Psi_{v,k} + \beta_{v}
+  }{
+    \left( \sum_{v'=1}^V  \Psi_{v',k} + \beta_{v'} \right)
+  }
+  \enspace.
+\end{equation}
+
+The similar technique can be used to estimate the empirical topic
+distributions of documents, $\hat\Theta=\{\hat\theta_d\}$:
+\begin{equation}
+  \hat\theta_{d,k}
+  =
+  \frac{
+    \Omega_{k,d} + \alpha_k
+  }{
+    \left( \sum_{k'=1}^K  \Omega_{k',d} + \alpha_k \right)
+  }
+  \enspace.
+\end{equation}
+
+Given $\hat\Theta=\{\hat\theta_d\}$ and $Y=\{y_d\}$, we can estimate
+$R$ by maximizing likelihood of the rate model:
+\begin{equation}
+  \label{eq:rate-model}
+  \log p(Y | \hat\Theta, R) =
+  \sum_{d=1}^D \log \N(y_d; \; \eta \cdot \hat\theta_d + \mu, \sigma^2)
+\end{equation}
+Denoting
+\begin{equation}
+  \label{eq:convenient-notaitons}
+ \Lambda\equiv[\eta\;\mu] \qquad
+ \Pi_d\equiv\begin{bmatrix}\hat\theta_d\\1\end{bmatrix} \qquad
+ \hat\mu_d \equiv \eta \cdot \hat\theta_d + \mu
+\end{equation}
+we have
+\begin{equation}
+  \label{eq:ml-rate-model}
+  \begin{split}
+  \frac{\partial{\log p(Y | \hat\Theta, R)}}{\partial \Lambda}
+  &=
+  -\frac{1}{2}
+  \sum_{d=1}^D
+  \frac{\partial}{\partial \Lambda}
+  \left(y_d - \hat\mu_d\right)^T \frac{1}{\sigma^2} \left(y_d - \hat\mu_d\right)
+  \\
+  &= \frac{1}{\sigma^2} \sum_{d=1}^D \left[ y_d \Pi_d^T - \Lambda\Pi\Pi^T \right]
+  \enspace.
+  \end{split}
+\end{equation}
+Setting this derivative to zero and solving for $\Lambda$, we get the
+update equation for $\Lambda$:
+\begin{equation}
+  \label{eq:update-slda-transformer-basis}
+  \Lambda = \left[\sum_d y_d\Pi_d^T\right] \left[\sum_d \Pi_d\Pi_d^T\right]^{-1}
+  \enspace.
+\end{equation}
+Once $\Lambda$ is estimated, the covariance are updated in the usual
+way:
+\begin{equation}
+  \label{eq:update-slda-covariance}
+  \sigma^2 = \sum_d (y_d-\hat\mu_d)(y_d-\hat\mu_d)^T
+  \enspace.
+\end{equation}
+
+\section{Fast Approximation of Supervised LDA}
+
+Compare the Gibbs sampling rule of sLDA
+(\ref{eq:slda-full-conditional-1}) with that of LDA:
+\begin{equation}
+  \label{eq:fcp-lda}
+  \begin{split}
+    p&(z_{d,n}|Z_{-(d,n)},W,\alpha,\beta)
+    \\
+    =&
+    \left[ \frac{
+        \Omega_{d,z_{d,n}} + \alpha_{z_{d,n}} - 1
+      }{
+        \left( \sum_{k=1}^K  \Omega_{d,k} + \alpha_k \right) - 1
+      } \right]
+    \cdot
+    \left[ \frac{
+        \Psi_{z_{d,n},w_{d,n}} + \beta_{w_{d,n}} - 1
+      }{
+        \left( \sum_{v=1}^V  \Psi_{v,z_{d,n}} + \beta_w \right) - 1
+      } \right]
+    \enspace,
+  \end{split}
+\end{equation}
+we see that (\ref{eq:slda-full-conditional-1}) has an additional term
+than (\ref{eq:fcp-lda}).  This is because that $Z$ of sLDA
+statistically depends on the topic prior $\alpha$, the word prior
+$\beta$, and document rates $Y$ (c.f.~Figure~\ref{fig:slda-set}).  The
+three terms of (\ref{eq:slda-full-conditional-1}) correspond to these
+dependencies respectively, whereas in LDA, $Z$ depends only on
+$\alpha$ and $\beta$.
+
+It is notable that the third term of
+(\ref{eq:slda-full-conditional-1}) can be simplified a step further:
+\begin{equation}
+  \label{eq:normal-fraction}
+  \begin{split}
+  &\frac{
+    \N(y_d;\;\eta\cdot\hat{\theta}_d+\mu,\sigma^2)
+  }{
+    \N(y_d;\;\eta\cdot\hat{\theta}_{d,-n}+\mu,\sigma^2)
+  }
+  \\
+  &=
+  \frac{
+    \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left[ -\frac{1}{2\sigma^2} ( y_d - \eta\cdot\hat{\theta}_d - \mu )^2 \right]
+  }{
+    \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left[ -\frac{1}{2\sigma^2} ( y_d - \eta\cdot\hat{\theta}_{d,-n} - \mu )^2 \right]
+  }
+  \\
+  &=
+  \exp\left[
+    -\frac{1}{2\sigma^2}
+    \eta \cdot (\hat{\theta}_{d,-n} - \hat{\theta}_d)
+    ( 2y_d - \eta\hat{\theta}_{d,-n} + \eta\hat{\theta}_d - 2\mu )  \right]
+  \\
+  &=
+  \exp\left[
+    -\frac{1}{2\sigma^2}
+    \eta \cdot \left(\frac{\Omega_{d,-n} - \Omega_d}{N_d} \right)
+    \left( 2y_d - \eta\cdot\frac{\Omega_{d,-n} + \Omega_d}{N_d} - 2\mu \right)
+  \right]
+  \enspace,
+  \end{split}
+\end{equation}
+where count vectors $\Omega_d$ and $\Omega_{d,-n}$ are almost
+identical, except that the $z_{d,n}$-th element of $\Omega_d$ is one
+larger than the $z_{d,n}$-th element of $\Omega_{d,-n}$.  Given the
+similarity between $\Omega_d$ and $\Omega_{d,-n}$, we have
+\begin{equation}
+  \label{eq:scale-analysis}
+  \begin{split}
+  \E\left\{ \left| 2y_d - \eta\cdot\frac{\Omega_{d,-n}+\Omega_d}{N_d}-2\mu \right| \right\}
+  &\simeq
+  \E\left\{ \left| 2y_d - \eta\cdot\frac{2\Omega_d}{N_d}-2\mu \right| \right\}
+  \\
+  &=
+  \E\left\{ 2 \left| y_d - \eta\cdot\hat{\theta}_d - \mu \right| \right\}
+  \\
+  &=
+  2\sigma
+  \enspace.
+  \end{split}
+\end{equation}
+(\ref{eq:scale-analysis}) enables us to approximate
+(\ref{eq:normal-fraction}) by:
+\begin{equation}
+  \label{eq:normal-fraction-1}
+  \frac{
+    \N(y_d;\;\eta\cdot\hat{\theta}_d+\mu,\sigma^2)
+  }{
+    \N(y_d;\;\eta\cdot\hat{\theta}_{d,-n}+\mu,\sigma^2)
+  }
+  \simeq
+  \exp\left[
+    -\frac{1}{\sigma}
+    \eta \cdot \left(\frac{\Omega_{d,-n} - \Omega_d}{N_d} \right)
+  \right]
+  \enspace.
+\end{equation}
+From (\ref{eq:normal-fraction-1}) we see the following properties:
+\begin{enumerate}
+\item The similarity between $\Omega_d$ and $\Omega_{d,-n}$ makes
+  $\Omega_d-\Omega_{d,-n}$ close to a zero vector, which in turn makes
+  (\ref{eq:normal-fraction-1}) close to 1 and thus degenerates the
+  full conditional distribution function of sLDA
+  (\ref{eq:slda-full-conditional-1}) to that of LDA
+  (\ref{eq:fcp-lda}).
+\item If documents are long (i.e., $N_d$'s are large) or document
+  rates have a large variance (i.e., $\sigma^2$ is large), this
+  degeneration will be enhanced.
+\item If $\eta$ has large magnitude, this degeneration is weakened.
+  As (\ref{eq:convenient-notaitons})
+  (\ref{eq:update-slda-transformer-basis}) explain that $\eta$ is
+  proportional to the expectation of $y_d$, we can also say that if
+  document rates have large values, this degeneration is weakened.
+\end{enumerate}
+
+For rated document data, where rate values are not large enough but
+documents are generally long, (\ref{eq:normal-fraction-1}) is close to
+zero and (\ref{eq:slda-full-conditional-1}) can be well approximated
+by (\ref{eq:fcp-lda}).  Take the movie review data used in \cite{slda}
+as an example. Each document (review) contains about 300 words and
+labeled by 0 to 5 stars. \nt{experiments here showing $\eta$ has small
+  magnitude and $\eta\cdot\Delta\Omega/N_d$ is small.}  For longer
+documents like Google Scholar papers, Google Blogger posts and Google
+News, this approximation has even smaller error.
+
+This approximation can significantly boost the performance.  Because
+(\ref{eq:fcp-lda}) does not depend on the rate model, $R$, we do not
+need to update $R$ after each iteration, and the Gibbs sampling
+algorithm of sLDA degenerates to the algorithm of LDA.  This saves two
+passes of data scanning caused by
+(\ref{eq:update-slda-transformer-basis}) and
+(\ref{eq:update-slda-covariance}).  As Gibbs sampling scans the data
+for one pass, this approximation saves $2/3$ data access time.  Also,
+this makes it possible to benifit from optimization and
+parallelization of the LDA algorithm \cite{fastlda}
+\cite{dist-lda-gibbs} \cite{async-dist-lda-gibbs}.  Given $Z$
+estimated by above approximate algorithm, we can estimate $R$
+according to (\ref{eq:update-slda-transformer-basis}) and
+({eq:update-slda-covariance}) after esitmating $Z$.
+
+\section{Weighting Document Rates}
+
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: "llt"
+%%% End:
