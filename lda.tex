@@ -743,9 +743,9 @@ By the definition of $\pwz{k,v}$ and $\pzd{d,k}$, we have
   \pwz{k,v}
   &=
   \frac{
-    \Nzw{k,v} + \wordprior{t}
+    \Nzw{k,v} + \wordprior{v}
   }{
-    \left( \sum_{v'=1}^{V}  \Nzw{k,v'} + \wordprior{v'} \right)
+    \left( \sum_{w=1}^{V}  \Nzw{k,w} + \wordprior{w} \right)
   }
   \enspace,
   \\
@@ -754,7 +754,7 @@ By the definition of $\pwz{k,v}$ and $\pzd{d,k}$, we have
   \frac{
     \Ndz{d,k} + \topicprior{k}
   }{
-    \left( \sum_{k=1}^{K}  \Ndz{d,k} + \topicprior{z} \right)
+    \left( \sum_{l=1}^{K}  \Ndz{d,l} + \topicprior{l} \right)
   }
   \enspace.
   \end{split}
@@ -845,7 +845,7 @@ instead, it does not contain those ``$-1$'' terms:
     \frac{
       \Nzw{z_i,w_i} + \wordprior{w_i}
     }{
-      \left[ \sum_{v=1}^{V}  \Nzw{k,v} + \wordprior{t} \right]
+      \left[ \sum_{v=1}^{V}  \Nzw{k,v} + \wordprior{v} \right]
     }
     \cdot
     \big[
